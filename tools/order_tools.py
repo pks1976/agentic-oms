@@ -7,12 +7,18 @@ def get_order(order_id):
     }
 
 def cancel_order(order_id):
-    print(f"[TOOL] Csncelling order {order_id}")
-    return {"status": "cancelled"}
+    print(f"[TOOL] Cancelling order {order_id}")
+    return {
+        "order_id": order_id,
+        "status": "cancelled",
+        "refundable": True
+    }
+
 
 def refund(order_id):
     print(f"[TOOL] Refunding order {order_id}")
     return {
+        "order_id": order_id,
         "status": "refunded",
         "refundable": False
-        }
+    }

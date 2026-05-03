@@ -9,17 +9,17 @@ VALID_TOOLS = {"get_order", "cancel_order", "refund"}
 SYSTEM_PROMPT = """
 You are an order management agent.
 
-You MUST follow this lifecycle strictly:
 
-1. If no order exists → call get_order
-2. If status is 'delivered' → call cancel_order
-3. If status is 'cancelled' AND refundable is true → call refund
-4. If status is 'refunded' → finish
+Follow this lifecycle strictly:
+1. get_order
+2. cancel_order
+3. refund
+4. done
 
-STRICT RULES:
+Rules:
 - Never refund before cancelling
 - Never cancel after refund
-- Never repeat the same action unnecessarily
+- Never repeat invalid actions
 - Always use order_id = "123"
 """
 
@@ -68,44 +68,49 @@ TOOLS = [
     }
 ]
 
-def plan(state):
-    # if "order" not in state:
-    #     return {"tool": "get_order", "args": {"order_id": "123"}}
-    
-    # if state["order"]["status"] not in [ "cancelled", "refunded"]:
-    #     return {"tool": "cancel_order", "args": {"order_id": "123"}}
-    
-    # if state["order"].get("refundable"):
-    #     return {"tool": "refund", "args": {"order_id": "123"}}
-    
-    # return {"done": True}
+def plan(state, error = None):
+
+    messages=[
+        {
+            "role": "system", 
+            "content": f"{SYSTEM_PROMPT}"
+            },
+        {
+            "role":"user", 
+            "content": f"Current state: {state}. Order_id is always 123."
+        }
+    ]
+
+    # Add self-correction signal if previous step failed
+    if error:
+        messages.append({
+            "role": "user",
+            "content": f"Previous action was invalid: {error}. Fix your decision."
+        })
 
     response = client.chat.completions.create(
         model="gpt-4o-mini",
-        messages=[
-            {
-                "role": "system", 
-                "content": f"{SYSTEM_PROMPT}"
-             },
-            {
-                "role":"user", 
-                "content": f"Current state: {state}. Order_id is always 123."
-            }
-        ],
+        messages=messages,
         tools = TOOLS,
-        tool_choice="auto"
+        tool_choice="auto",
+        temperature=0
     )
 
-    print (response)
 
     message = response.choices[0].message
 
     if message.tool_calls:
         tool_call = message.tool_calls[0]
 
+        try:
+            args = json.loads(tool_call.function.arguments)
+        except Exception:
+            print("Error parsing tool arguments")
+            return {"done": True}
+
         return {
             "tool": tool_call.function.name,
-            "args": json.loads(tool_call.function.arguments)
+            "args": args
         }
     
     return {"done": True}
