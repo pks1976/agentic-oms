@@ -15,7 +15,7 @@ def main():
         if steps > max_steps:
             print("Safety break: too many steps")
             break
-
+        
         action = plan(state)
 
         if "done" in action:
@@ -30,10 +30,6 @@ def main():
         else:
             state["order"].update(result)
             
-
-   
-
-  
 
 if __name__ ==  "__main__":
     main()
