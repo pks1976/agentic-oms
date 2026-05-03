@@ -9,31 +9,64 @@ VALID_TOOLS = {"get_order", "cancel_order", "refund"}
 SYSTEM_PROMPT = """
 You are an order management agent.
 
-Your job is to decide the next action based on the current state.
-The order_id is always "123".
+You MUST follow this lifecycle strictly:
 
-Available tools:
-- get_order(order_id)
-- cancel_order(order_id)
-- refund(order_id)
+1. If no order exists → call get_order
+2. If status is 'delivered' → call cancel_order
+3. If status is 'cancelled' AND refundable is true → call refund
+4. If status is 'refunded' → finish
 
-Rules:
-- If no order info → call get_order
-- If already refunded → finish
-- If not cancelled → cancel first
-- If refundable → refund
-- Never repeat actions unnecessarily
- - Always include required arguments
-- order_id MUST always be "123"
-
-Output ONLY valid JSON:
-Either:
-{ "tool": "...", "args": {...} }
-
-OR:
-{ "done": true }
-
+STRICT RULES:
+- Never refund before cancelling
+- Never cancel after refund
+- Never repeat the same action unnecessarily
+- Always use order_id = "123"
 """
+
+TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "get_order",
+            "description": "Fetch order details",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "order_id": {"type": "string"}
+                },
+                "required": ["order_id"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "cancel_order",
+            "description": "Cancel an order",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "order_id": {"type": "string"}
+                },
+                "required": ["order_id"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "refund",
+            "description": "Refund an order",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "order_id": {"type": "string"}
+                },
+                "required": ["order_id"]
+            }
+        }
+    }
+]
 
 def plan(state):
     # if "order" not in state:
@@ -50,22 +83,34 @@ def plan(state):
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role":"user", "content": f"State: {state}"}
+            {
+                "role": "system", 
+                "content": f"{SYSTEM_PROMPT}"
+             },
+            {
+                "role":"user", 
+                "content": f"Current state: {state}. Order_id is always 123."
+            }
         ],
-        temperature=0
+        tools = TOOLS,
+        tool_choice="auto"
     )
 
     print (response)
 
-    content = response.choices[0].message.content
+    message = response.choices[0].message
 
-    try:
-        action = safe_parse(content)
-        return action
-    except Exception:
-        print("LLM output parsing failed:", content)
-        return {"done": True}
+    if message.tool_calls:
+        tool_call = message.tool_calls[0]
+
+        return {
+            "tool": tool_call.function.name,
+            "args": json.loads(tool_call.function.arguments)
+        }
+    
+    return {"done": True}
+
+
         
 
     
